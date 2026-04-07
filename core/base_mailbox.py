@@ -313,6 +313,7 @@ def create_mailbox(
             domains=extra.get("cfworker_domains", ""),
             enabled_domains=extra.get("cfworker_enabled_domains", ""),
             subdomain=extra.get("cfworker_subdomain", ""),
+            domain_level_count=extra.get("email_domain_level_count", 2),
             random_subdomain=extra.get("cfworker_random_subdomain", False),
             random_name_subdomain=extra.get("cfworker_random_name_subdomain", False),
             fingerprint=extra.get("cfworker_fingerprint", ""),
@@ -2282,6 +2283,7 @@ class CFWorkerMailbox(BaseMailbox):
         domains: Any = None,
         enabled_domains: Any = None,
         subdomain: str = "",
+        domain_level_count: Any = 2,
         random_subdomain: Any = False,
         random_name_subdomain: Any = False,
         fingerprint: str = "",
@@ -2300,6 +2302,7 @@ class CFWorkerMailbox(BaseMailbox):
         else:
             self.enabled_domains = raw_enabled_domains
         self.subdomain = self._normalize_subdomain(subdomain)
+        self.domain_level_count = self._parse_domain_level_count(domain_level_count)
         self.random_subdomain = self._to_bool(random_subdomain)
         self.random_name_subdomain = self._to_bool(random_name_subdomain)
         self.fingerprint = fingerprint
@@ -2403,6 +2406,14 @@ class CFWorkerMailbox(BaseMailbox):
         text = str(value or "").strip().lower()
         return text in {"1", "true", "yes", "on"}
 
+    @staticmethod
+    def _parse_domain_level_count(value: Any) -> int:
+        try:
+            parsed = int(str(value or "").strip() or "2")
+        except (TypeError, ValueError):
+            return 2
+        return parsed if parsed >= 2 else 2
+
     @classmethod
     def _parse_domains(cls, value: Any) -> list[str]:
         if not value:
@@ -2470,6 +2481,13 @@ class CFWorkerMailbox(BaseMailbox):
             sub_parts.append(self._generate_subdomain_label())
         if self.subdomain:
             sub_parts.append(self.subdomain)
+
+        base_level_count = len([part for part in domain.split(".") if part])
+        expected_total_levels = max(self.domain_level_count, 2)
+        missing_levels = max(expected_total_levels - (base_level_count + len(sub_parts)), 0)
+        if missing_levels > 0:
+            fillers = [self._generate_subdomain_label() for _ in range(missing_levels)]
+            sub_parts = fillers + sub_parts
 
         if not sub_parts:
             return domain
